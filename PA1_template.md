@@ -1,0 +1,327 @@
+---
+title: "Reproducible Research: Peer Assessment 1"
+
+output: 
+  html_document:
+    keep_md: true
+---
+
+# Introduction
+This assignment makes use of data from a personal activity monitoring device, which collects data (number of steps) at 5 minute intervals through out the day, in two months period.
+
+
+# Data
+The [Data](https://d396qusza40orc.cloudfront.net/repdata%2Fdata%2Factivity.zip) was collected in October and November, 2012. The dataset contains 3 variables: steps, date and interval and has 17568 observations.
+
+
+# Assignment
+It has to contain the following:
+
+1. Code for reading in the dataset and/or processing the data
+2. Histogram of the total number of steps taken each day
+3. Mean and median number of steps taken each day
+4. Time series plot of the average number of steps taken
+5. The 5-minute interval that, on average, contains the maximum number of steps
+6. Code to describe and show a strategy for imputing missing data
+7. Histogram of the total number of steps taken each day after missing values are imputed
+8. Panel plot comparing the average number of steps taken per 5-minute interval across weekdays and weekends
+9. All of the R code needed to reproduce the results (numbers, plots, etc.) in the report
+
+
+## Load libraries 
+(if absent, the packages have to be installed first)
+
+
+``` r
+library(ggplot2)
+library(dplyr)
+```
+
+```
+## Warning: package 'dplyr' was built under R version 4.2.3
+```
+
+```
+## 
+## Attaching package: 'dplyr'
+```
+
+```
+## The following objects are masked from 'package:stats':
+## 
+##     filter, lag
+```
+
+```
+## The following objects are masked from 'package:base':
+## 
+##     intersect, setdiff, setequal, union
+```
+
+``` r
+library(lubridate)
+```
+
+```
+## 
+## Attaching package: 'lubridate'
+```
+
+```
+## The following objects are masked from 'package:base':
+## 
+##     date, intersect, setdiff, union
+```
+
+
+## Set global chunk options 
+(set echo = TRUE for making all the code visible)
+
+``` r
+knitr::opts_chunk$set(echo = TRUE)
+```
+
+
+## Loading and preprocessing the data
+The dataset is available in the GitHub repository, but if not available locally, it is downloaded from the URL source. 
+The NA values in the dataset are not treated yet, according to the assignment instructions.
+
+
+
+``` r
+# Define file names and URL
+zipfile <- "activity.zip"
+csvfile <- "activity.csv"
+data_url <- "https://d396qusza40orc.cloudfront.net/repdata%2Fdata%2Factivity.zip"
+
+# Check if zip file exists, if not download
+if (!file.exists(zipfile)) {
+  download.file(data_url, destfile = zipfile, mode = "wb")
+}
+
+# Unzip if csv not already extracted
+if (!file.exists(csvfile)) {
+  unzip(zipfile)
+}
+
+# Read the data
+ActData <- read.csv(csvfile, colClasses = c("numeric", "Date", "numeric"))
+
+# Clean up helper variables
+rm(zipfile, csvfile, data_url)
+```
+
+
+## What is mean total number of steps taken per day?
+
+### Distribution of total steps per day
+The total number of steps taken each day is calculated and visualized in a histogram. 
+This histogram uses a bin width of 1000 steps to show the distribution.
+Y-axis shows the count of days per step bin.
+
+
+
+``` r
+# Aggregate total steps per day
+total_steps <- aggregate(steps ~ date, data = ActData, FUN = sum, na.rm = TRUE)
+
+# Plot histogram with ggplot2
+ggplot(total_steps, aes(x = steps)) +
+  geom_histogram(binwidth = 1000, fill = "navy", color = "white", boundary = 0) +
+    scale_y_continuous(breaks = 0:12) +
+    labs(title = "Histogram of Total Steps per Day",
+       x = "Total Steps",
+       y = "Count of Days")
+```
+
+![](PA1_template_files/figure-html/histogram_steps-1.png)<!-- -->
+
+As shown in the histogram, the total number of steps between 10000 and 11000 per day is the most frequent count. At the lower end, two days have fewer than 1000 steps, which might be circumstantial or a result of a missing observations in certain intervals. On two days there are more then 20000 steps.
+
+
+### Calculation of the mean and the median of the total number of steps per day
+
+
+``` r
+mean(total_steps$steps, na.rm = TRUE)
+```
+
+```
+## [1] 10766.19
+```
+
+``` r
+median(total_steps$steps, na.rm = TRUE)
+```
+
+```
+## [1] 10765
+```
+The mean and median are within the most frequent bucket of 10000-11000 steps per day.
+
+
+## What is the average daily activity pattern?
+
+### Here the average steps per every time interval are calculated first and then shown in a plot: 
+
+
+``` r
+avg_steps <- ActData %>%
+  group_by(interval) %>%
+  summarise(mean_steps = mean(steps, na.rm = TRUE))
+
+
+ggplot(avg_steps, aes(x = interval, y = mean_steps)) +
+  geom_line(color = "darkviolet") +
+  labs(title = "Average Daily Activity Pattern",
+       x = "5-minute Interval",
+       y = "Average Number of Steps")
+```
+
+![](PA1_template_files/figure-html/daily_activity-1.png)<!-- -->
+
+This plot shows that the most active time of the day is in the morning, around 8-9 AM, followed by moderate activity until 7 PM, after which it decreases. During typical sleeping hours,  activity drops to nearly zero.
+
+### Calculation of the 5-minute interval which contains the maximum average number of steps:
+
+
+``` r
+max_interval <- avg_steps[which.max(avg_steps$mean_steps), ]
+max_interval
+```
+
+```
+## # A tibble: 1 × 2
+##   interval mean_steps
+##      <dbl>      <dbl>
+## 1      835       206.
+```
+The peak 5-minute activity interval is 8.35-8.40 AM, with an average of 206 steps.
+
+
+## Imputing missing values
+
+### Calculate and report the total number of missing values in the dataset
+Check the presence and the count of NAs:
+
+
+``` r
+summary(ActData)
+```
+
+```
+##      steps             date               interval     
+##  Min.   :  0.00   Min.   :2012-10-01   Min.   :   0.0  
+##  1st Qu.:  0.00   1st Qu.:2012-10-16   1st Qu.: 588.8  
+##  Median :  0.00   Median :2012-10-31   Median :1177.5  
+##  Mean   : 37.38   Mean   :2012-10-31   Mean   :1177.5  
+##  3rd Qu.: 12.00   3rd Qu.:2012-11-15   3rd Qu.:1766.2  
+##  Max.   :806.00   Max.   :2012-11-30   Max.   :2355.0  
+##  NA's   :2304
+```
+
+``` r
+sum(is.na(ActData))
+```
+
+```
+## [1] 2304
+```
+There are 2304 NAs in the steps observations.
+
+### Filling in all of the missing values in the dataset
+The NAs in the steps will be replaced with the mean number of steps for that specific 5‑minute interval across all days.
+
+
+``` r
+# Calculate mean steps for each 5-minute interval
+interval_means <- ActData %>%
+  group_by(interval) %>%
+  summarise(mean_steps = mean(steps, na.rm = TRUE))
+
+# Replace the NAs and create a new dataset
+FData <- ActData %>%
+  group_by(interval) %>%
+  mutate(steps = ifelse(is.na(steps),
+                        mean(steps, na.rm = TRUE),
+                        steps)) %>%
+  ungroup()
+
+# Check of the new dataset statistics
+summary(FData)
+```
+
+```
+##      steps             date               interval     
+##  Min.   :  0.00   Min.   :2012-10-01   Min.   :   0.0  
+##  1st Qu.:  0.00   1st Qu.:2012-10-16   1st Qu.: 588.8  
+##  Median :  0.00   Median :2012-10-31   Median :1177.5  
+##  Mean   : 37.38   Mean   :2012-10-31   Mean   :1177.5  
+##  3rd Qu.: 27.00   3rd Qu.:2012-11-15   3rd Qu.:1766.2  
+##  Max.   :806.00   Max.   :2012-11-30   Max.   :2355.0
+```
+Now all the NAs are substituted with the average steps count for the respective interval (as a result, the imputed values are fractional).
+
+### Plotting of histogram of the total number of steps taken each day and calculation of the mean and the median to compare the statistics in the new dataset with the old one
+
+
+``` r
+avg_steps <- FData %>%
+  group_by(interval) %>%
+  summarise(mean_steps = mean(steps, na.rm = TRUE))
+
+
+# Plot histogram with ggplot2
+ggplot(total_steps, aes(x = steps)) +
+  geom_histogram(binwidth = 1000, fill = "darkgreen", color = "white", boundary = 0) +
+    scale_y_continuous(breaks = 0:12) +
+    labs(title = "Histogram of Total Steps per Day",
+       x = "Total Steps",
+       y = "Count of Days")
+```
+
+![](PA1_template_files/figure-html/daily_activity_FData-1.png)<!-- -->
+
+As also seen from the summary(), the imputing of the missing data with the average steps count per the respective interval almost didn't change the statistics.
+
+
+## Are there differences in activity patterns between weekdays and weekends?
+
+### Here new factor variable is added first, with two levels: weekday and weekend
+
+
+``` r
+FData <- FData %>%
+  mutate(day_type = ifelse(wday(as.Date(date), week_start = 1) %in% c(6, 7),
+                           "weekend", "weekday"))
+
+
+FData$day_type <- factor(FData$day_type,
+                                   levels = c("weekday", "weekend"))
+```
+
+### Compute average steps per interval by day type:
+
+
+``` r
+w_steps_avg <- FData %>%
+  group_by(interval, day_type) %>%
+  summarise(mean_steps = mean(steps), .groups = "drop")
+```
+
+### Creating a plot with time series by weekday vs weekend
+
+
+``` r
+ggplot(w_steps_avg, aes(x = interval, y = mean_steps)) +
+  geom_line(color = "darkblue") +
+  facet_wrap(~ day_type, ncol = 1) +
+  labs(title = "Average Daily Activity Pattern: Weekdays vs Weekends",
+       x = "5-minute Interval",
+       y = "Average Number of Steps") +
+  theme_minimal()
+```
+
+![](PA1_template_files/figure-html/plot_for_weekdays/weekends-1.png)<!-- -->
+
+The weekdays activity pattern reflects a typical working day with peak activity in the mornings and moderate activity during the working hours. In the weekends, the activity is more evenly spread across the active hours. In both groups, the activity is close to zero during the typical sleeping hours.
